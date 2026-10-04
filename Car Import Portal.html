@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Car Import Portal</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#667085;--bd:#e3e6ea;--ac:#1d4ed8;--ok:#15803d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111418;--card:#1a1f26;--tx:#e8ebef;--mu:#98a2b3;--bd:#2c333d;--ac:#6b9bff;--ok:#4ade80}}
+:root[data-theme="dark"]{--bg:#111418;--card:#1a1f26;--tx:#e8ebef;--mu:#98a2b3;--bd:#2c333d;--ac:#6b9bff;--ok:#4ade80}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.w{max-width:960px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+.mu{color:var(--mu);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button{padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.lay{display:grid;grid-template-columns:240px 1fr;gap:12px}
+@media(max-width:700px){.lay{grid-template-columns:1fr}}
+.cust{padding:8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.cust.on{border-color:var(--ac);background:var(--bg)}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;background:var(--bg);border:1px solid var(--bd)}
+.badge.d{color:var(--ok);border-color:var(--ok)}
+.steps{display:flex;gap:3px;margin:10px 0 4px}
+.steps i{flex:1;height:5px;border-radius:3px;background:var(--bd)}
+.steps i.f{background:var(--ac)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;font-size:13px;margin-top:8px}
+.kv b{display:block;color:var(--mu);font-weight:500;font-size:12px}
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>🚗 Car Import Portal</h1>
+  <div class="mu" id="who">Loading…</div>
+  <div id="app" style="margin-top:14px"></div>
+</div>
+<script>
+const STATUSES=["Purchased","At US yard","Shipped","At port (Umm Qasr)","Customs clearance","Delivered"];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const $=id=>document.getElementById(id);
+let db,user,isStaff=false,me=null,selId=null,unsubCars=null,customers=[],cars=[],editing=null;
+
+function carCard(c,staff){
+  const i=STATUSES.indexOf(c.status);
+  return `<div class="card"><div class="row" style="justify-content:space-between">
+    <div><b>${esc(c.year)} ${esc(c.make)} ${esc(c.model)}</b><div class="mu">VIN ${esc(c.vin)||"—"}</div></div>
+    <span class="badge ${i===5?'d':''}">${esc(c.status)}</span></div>
+    <div class="steps">${STATUSES.map((_,k)=>`<i class="${k<=i?'f':''}"></i>`).join("")}</div>
+    <div class="kv">
+      <div><b>Auction</b>${esc(c.auction)||"—"} ${c.lot?"#"+esc(c.lot):""}</div>
+      <div><b>Purchase price</b>${c.price?"$"+esc(c.price):"—"}</div>
+      <div><b>Container / Ship</b>${esc(c.container)||"—"}</div>
+      <div><b>ETA Iraq</b>${esc(c.eta)||"—"}</div></div>
+    ${c.notes?`<div class="mu" style="margin-top:8px">${esc(c.notes)}</div>`:""}
+    ${staff?`<div class="row" style="margin-top:10px"><button data-edit="${esc(c.id)}">Edit</button><button data-del="${esc(c.id)}">Delete</button></div>`:""}
+  </div>`;
+}
+
+function renderCustomer(){
+  $("app").innerHTML=`<h2>My cars (${cars.length})</h2>`+(cars.length?cars.map(c=>carCard(c,false)).join(""):`<div class="card mu">No cars have been added to your account yet.</div>`);
+}
+
+function renderStaff(){
+  const sel=customers.find(c=>c.id===selId);
+  $("app").innerHTML=`<div class="lay">
+   <div><div class="card"><h2>Customers</h2>
+     ${customers.map(c=>`<div class="cust ${c.id===selId?'on':''}" data-c="${esc(c.id)}">${esc(c.name)}</div>`).join("")||'<div class="mu">None yet</div>'}
+     <hr style="border:0;border-top:1px solid var(--bd);margin:10px 0">
+     <input id="q" placeholder="Find customer by name…"><div id="res" style="margin-top:6px"></div>
+     <div class="mu" style="margin-top:6px">Customers must first be invited to this page (Share → invite by email).</div>
+   </div></div>
+   <div>${sel?`<div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">${esc(sel.name)}’s cars</h2><button class="p" id="add">+ Add car</button></div>
+     <div id="form"></div>${cars.map(c=>carCard(c,true)).join("")||'<div class="card mu">No cars yet.</div>'}`
+     :'<div class="card mu">Select or add a customer to manage their cars.</div>'}</div></div>`;
+  document.querySelectorAll("[data-c]").forEach(e=>e.onclick=()=>selectCust(e.dataset.c));
+  const q=$("q");q.oninput=async()=>{
+    const r=(await user.search(q.value)).filter(p=>!p.isMe&&!customers.some(c=>c.id===p.id));
+    $("res").innerHTML=r.slice(0,6).map(p=>`<div class="cust" data-add="${esc(p.id)}" data-n="${esc(p.name)}">+ ${esc(p.name)}</div>`).join("");
+    document.querySelectorAll("[data-add]").forEach(e=>e.onclick=async()=>{
+      await db.doc("customers/"+e.dataset.add).set({name:e.dataset.n});selectCust(e.dataset.add)});
+  };
+  if(sel){$("add").onclick=()=>showForm({});
+    document.querySelectorAll("[data-edit]").forEach(e=>e.onclick=()=>showForm(cars.find(c=>c.id===e.dataset.edit)));
+    document.querySelectorAll("[data-del]").forEach(e=>e.onclick=async()=>{if(confirm("Delete this car?"))await db.doc(`cars/${selId}/items/${e.dataset.del}`).delete()});
+    if(editing)showForm(editing);}
+}
+
+function showForm(c){
+  editing=c;const f=(k,l,t)=>`<div><label class="mu">${l}</label><input id="f_${k}" type="${t||'text'}" value="${esc(c[k])}"></div>`;
+  $("form").innerHTML=`<div class="card"><div class="grid">
+    ${f("year","Year","number")}${f("make","Make")}${f("model","Model")}${f("vin","VIN")}
+    ${f("auction","Auction (Copart / IAA…)")}${f("lot","Lot #")}${f("price","Purchase price (USD)","number")}
+    ${f("container","Container / Ship")}${f("eta","ETA Iraq","date")}
+    <div><label class="mu">Status</label><select id="f_status">${STATUSES.map(s=>`<option ${s===(c.status||STATUSES[0])?'selected':''}>${s}</option>`).join("")}</select></div></div>
+    <label class="mu">Notes (visible to customer)</label><textarea id="f_notes" rows="2">${esc(c.notes)}</textarea>
+    <div class="row" style="margin-top:10px"><button class="p" id="save">Save</button><button id="cancel">Cancel</button></div></div>`;
+  $("cancel").onclick=()=>{editing=null;$("form").innerHTML=""};
+  $("save").onclick=async()=>{
+    const d={};["year","make","model","vin","auction","lot","price","container","eta","status","notes"].forEach(k=>d[k]=$("f_"+k).value.trim());
+    const id=c.id||("c"+Date.now().toString(36));
+    try{await db.doc(`cars/${selId}/items/${id}`).set(d);editing=null;}catch(e){alert("Could not save: "+(e.message||e.code))}
+  };
+}
+
+function selectCust(id){
+  selId=id;editing=null;cars=[];if(unsubCars)unsubCars();
+  unsubCars=db.collection(`cars/${id}/items`).onSnapshot(s=>{cars=s.docs.map(d=>({id:d.id,...d.data()}));renderStaff()});
+  renderStaff();
+}
+
+(async()=>{
+  try{
+    db=await claude.use("db");user=await claude.use("user");
+    if(!db||!user){$("who").textContent="Please sign in to view your cars.";return}
+    me=await user.me();isStaff=await user.canEdit();
+    $("who").textContent=`${isStaff?"Staff":"Customer"} • ${me.name}`;
+    if(isStaff){
+      db.collection("customers").onSnapshot(s=>{customers=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));if(!editing)renderStaff()});
+      renderStaff();
+    }else{
+      db.collection(`cars/${me.id}/items`).onSnapshot(s=>{cars=s.docs.map(d=>({id:d.id,...d.data()}));renderCustomer()},()=>{cars=[];renderCustomer()});
+      renderCustomer();
+    }
+  }catch(e){$("who").textContent="Could not load: "+(e.message||e)}
+})();
+</script>
+</body>
+</html>
